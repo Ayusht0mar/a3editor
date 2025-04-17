@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 
+body {
+  background-color: #0a0a0a;
+  color: #fafafa;
+}
+
 .grainy:before {
   content: "";
   background-color: var(--background);
