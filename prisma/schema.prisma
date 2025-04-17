@@ -1,0 +1,488 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+ 
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+  output = "../node_modules/.prisma/client"
+}
+ 
+model User {
+  id            String          @id @default(cuid())
+  name          String?
+  username      String?         @unique
+  email         String          @unique
+  emailVerified DateTime?
+  image         String?
+  avatarId      Int?
+  bio           String?
+
+  //Relations
+  accounts      Account[]
+  sessions      Session[]
+  activityLog   ActivityLog[]
+  notifications Notification[]
+  projects      Project[]       @relation("ProjectOwner")
+  templates     Template[]
+  files         File[]
+  terminals     TerminalSession[]
+  collaborators Project[]       @relation("ProjectCollaborator")
+  comments      Comment[]
+  commentReactions CommentReaction[]
+  deployments   Deployment[]
+  fileHistories FileHistory[]
+  branches      Branch[]
+  commits       Commit[]
+  fixedBy       Diagnostic[] @relation("DiagnosticFixes")
+  permissions   ProjectPermission[]
+ 
+ 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+ 
+model Project {
+  id            String    @id @default(cuid())
+  name          String
+  description   String?
+  slug          String    @unique
+  isPublic      Boolean   @default(false)
+  owner         User      @relation("ProjectOwner", fields: [ownerId], references: [id])
+  ownerId       String
+  template      String?
+  lastOpened    DateTime?
+  tags          String[]
+
+  //Relations
+  activityLog   ActivityLog[]
+  projectStats  ProjectStats?
+  collaborators User[]    @relation("ProjectCollaborator")
+  files         File[]
+  folders       Folder[]
+  comments      Comment[]
+  deployments   Deployment[]
+  previews      CodePreview[]
+  terminals     TerminalSession[]
+  lintConfig    LintConfig?
+  visibility    ProjectVisibility @default(PRIVATE)
+  permissions   ProjectPermission[]
+  invites       ProjectInvite[]
+  branches      Branch[]
+
+  settings      Json?     // Store project-specific settings
+  workspaceSettings WorkspaceSettings?
+  defaultBranch String  @default("main")
+ 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([slug])
+  
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String
+  name      String
+  commits   Commit[]
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  String
+  
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+model Commit {
+  id        String   @id @default(cuid())
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  branchId  String
+  message   String
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  String
+  changes   Json     // File changes in this commit
+  createdAt DateTime @default(now())
+
+  @@index([branchId])
+  @@index([authorId])
+}
+ 
+model Folder {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  project    Project   @relation(fields: [projectId], references: [id])
+  projectId  String
+  parent     Folder?   @relation("FolderHierarchy", fields: [parentId], references: [id])
+  parentId   String?
+  children   Folder[]  @relation("FolderHierarchy")
+  files      File[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model File {
+  id          String    @id @default(cuid())
+  name        String
+  path        String
+  content     String    @db.Text
+  language    String?
+  isDirectory Boolean   @default(false)
+  size        Int?
+  lastModified DateTime?
+  encoding    String?
+  history     FileHistory[]     // Version history
+  project     Project   @relation(fields: [projectId], references: [id])
+  projectId   String
+  author      User      @relation(fields: [authorId], references: [id])
+  authorId    String
+  folder     Folder?   @relation(fields: [folderId], references: [id])
+  folderId   String?
+  comments    Comment[]
+  diagnostics Diagnostic[]
+ 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, path])
+  @@index([authorId, createdAt])
+  @@unique([projectId, path])
+}
+ 
+model FileHistory {
+  id        String @id @default(cuid())
+  file      File   @relation(fields: [fileId], references: [id])
+  fileId    String
+  content   String @db.Text
+  author    User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId  String
+  message   String?
+  createdAt DateTime @default(now())
+
+  @@index([authorId])
+  @@index([fileId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  file      File     @relation(fields: [fileId], references: [id])
+  fileId    String
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  String
+  line      Int?
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String
+  parentId  String?  // For threaded comments
+  parent    Comment? @relation("CommentThread", fields: [parentId], references: [id])
+  replies   Comment[] @relation("CommentThread")
+  resolved  Boolean  @default(false)  // For code review comments
+  range     Json?    // For multi-line selections
+  reactions CommentReaction[]
+ 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fileId])
+  @@index([authorId])
+  @@index([projectId])
+}
+ 
+model CommentReaction {
+  id        String   @id @default(cuid())
+  comment   Comment  @relation(fields: [commentId], references: [id])
+  commentId String
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  type      String   // e.g., "👍", "❤️", etc.
+
+  @@unique([commentId, userId, type])
+  @@index([commentId])
+  @@index([userId])
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?    @db.Text
+  access_token      String?    @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?    @db.Text
+  session_state     String?
+ 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+ 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+ 
+  @@id([provider, providerAccountId])
+}
+ 
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+ 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+ 
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+ 
+  @@id([identifier, token])
+}
+ 
+
+
+// Code Intelligence Models
+model Diagnostic {
+  id          String   @id @default(cuid())
+  file        File     @relation(fields: [fileId], references: [id])
+  fileId      String
+  type        String   // error, warning, info
+  message     String
+  line        Int
+  column      Int
+  endLine     Int?
+  endColumn   Int?
+  source      String?  // e.g., "typescript", "eslint"
+  code        String?
+  severity    Int?     // 1: error, 2: warning, 3: info
+  data        Json?    // Additional diagnostic data
+  ruleId      String?   // For specific lint/type rule
+  suggestion  String?   // Auto-fix suggestion
+  relatedInformation Json? // For linked diagnostics
+  hash        String?   // For deduplication
+  isFixed     Boolean   @default(false)
+  fixedBy     User?     @relation("DiagnosticFixes", fields: [fixedById], references: [id])
+  fixedById   String?
+  fixedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fileId])
+  @@index([type])
+}
+
+model LintConfig {
+  id        String   @id @default(cuid())
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String   @unique
+  enabled   Boolean  @default(true)
+  tools     Json     // Configuration for each linting tool
+  rules     Json?    // Custom rules configuration
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Code Preview Models
+model CodePreview {
+  id          String   @id @default(cuid())
+  project     Project  @relation(fields: [projectId], references: [id])
+  projectId   String
+  entryFile   String
+  framework   String?
+  isLive      Boolean  @default(true)
+  config      Json?    // Preview-specific configuration
+  cache       Json?    // Cached preview data
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+// Deployment Models
+model Deployment {
+  id          String   @id @default(cuid())
+  project     Project  @relation(fields: [projectId], references: [id])
+  projectId   String
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  provider    String   // e.g., "vercel", "netlify"
+  status      String   // building, success, failed
+  url         String?
+  buildLogs   String?  @db.Text
+  config      Json?    // Deployment configuration
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([userId])
+  @@index([status])
+}
+
+// Terminal Session Models
+model TerminalSession {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  project     Project? @relation(fields: [projectId], references: [id])
+  projectId   String?
+  title       String?
+  command     String?  @db.Text
+  output      String?  @db.Text
+  status      String?  // running, completed, failed
+  exitCode    Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([projectId])
+}
+
+// Notification Models
+model Notification {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  type      String   // info, success, error, warning
+  status    String   // read, unread
+  title     String
+  message   String   @db.Text
+  action    Json?    // Related action data
+  link      String?  // Optional link to related content
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+}
+ 
+
+model Template {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  type        String   // "project" or "file"
+  content     Json     // Template structure/content
+  author      User     @relation(fields: [authorId], references: [id])
+  authorId    String
+  isPublic    Boolean  @default(false)
+  category    String?
+  tags        String[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId])
+  @@index([type])
+}
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  project     Project? @relation(fields: [projectId], references: [id])
+  projectId   String?
+  action      String   // e.g., "file.create", "project.open"
+  metadata    Json?    // Additional activity data
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([action])
+}
+
+model ProjectStats {
+  id              String   @id @default(cuid())
+  project         Project  @relation(fields: [projectId], references: [id])
+  projectId       String   @unique
+  viewCount       Int      @default(0)
+  uniqueVisitors  Int      @default(0)
+  totalFiles      Int      @default(0)
+  totalSize       Int      @default(0) // in bytes
+  lastDeployment  DateTime?
+  avgBuildTime    Float?   // in seconds
+  
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+
+model ProjectPermission {
+  id        String   @id @default(cuid())
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  role      ProjectRole @default(VIEWER)
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
+}
+
+model ProjectInvite {
+  id        String   @id @default(cuid())
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String
+  email     String
+  role      ProjectRole @default(VIEWER)
+  token     String   @unique
+  expires   DateTime
+  
+  @@index([projectId])
+  @@index([email])
+}
+
+model WorkspaceSettings {
+  id        String   @id @default(cuid())
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String   @unique
+  editor    Json?    // Editor preferences
+  terminal  Json?    // Terminal settings
+  git       Json?    // Git settings
+  format    Json?    // Formatting rules
+  debug     Json?    // Debugger settings
+}
+
+enum ProjectVisibility {
+  PUBLIC
+  PRIVATE
+  UNLISTED
+}
+
+enum ProjectRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+  UNLISTED
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  ERROR
+  WARNING
+}
+
+enum DeploymentStatus {
+  QUEUED
+  BUILDING
+  SUCCESS
+  FAILED
+}
