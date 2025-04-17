@@ -22,10 +22,13 @@ const ProjectPage = async ({ params }: PageProps) => {
     return notFound();
   }
 
-  const project = await prisma.project.findUnique({
+  const project = await prisma.project.findFirst({
     where: {
       slug: params.projectname,
-      ownerId: session.user.id,
+      OR: [
+        { ownerId: session.user.id },
+        { collaborators: { some: { id: session.user.id } } }
+      ]
     }
   });
 
