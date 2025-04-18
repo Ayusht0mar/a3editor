@@ -3,6 +3,7 @@ import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
 import "./globals.css";
 import { Providers } from "@/components/providers/session-provider";
+import { Toaster } from "sonner";
 
 const geistSans = GeistSans;
 const geistMono = GeistMono;
@@ -23,6 +24,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
+          <Toaster richColors/>
           {children}
         </Providers>
       </body>

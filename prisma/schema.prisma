@@ -47,13 +47,12 @@ model Project {
   id            String    @id @default(cuid())
   name          String
   description   String?
-  slug          String    @unique
+  slug          String    
   isPublic      Boolean   @default(false)
   owner         User      @relation("ProjectOwner", fields: [ownerId], references: [id])
   ownerId       String
   template      String?
   lastOpened    DateTime?
-  tags          String[]
 
   //Relations
   activityLog   ActivityLog[]
@@ -112,7 +111,7 @@ model Commit {
  
 model Folder {
   id          String     @id @default(cuid())
-  name        String     @unique
+  name        String
   project    Project   @relation(fields: [projectId], references: [id])
   projectId  String
   parent     Folder?   @relation("FolderHierarchy", fields: [parentId], references: [id])

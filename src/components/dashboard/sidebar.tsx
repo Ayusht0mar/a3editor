@@ -7,45 +7,31 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner"
+import { createProject } from "@/app/actions/createproject";
 
 
 const DashboardSidebar = () => {
 
-    const router = useRouter();
+    const [loading, setLoading] = useState(false);
 
-    const [name, setName] = useState("");
-    const [description, setDescription] = useState("");
-    const [isLoading, setIsLoading] = useState(false);
+    const handleCreateProject = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const formData = new FormData(event.currentTarget);
+        const name = formData.get("name") as string;
 
-    const handleCreate = async () => {
-        if (!name.trim()) {
+        if (!name) {
             toast.error("Project name is required")
             return
-          }
+        }
 
-        try {
-            setIsLoading(true);
-            const res = await fetch("/api/projects", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ name, description }),
-            })
-            
-
-            const data = await res.json()
-
-            if (!res.ok) {
-                throw new Error(data.error || "Failed to create project")
-            }
+        try { 
+            await createProject(formData);
+            setLoading(true);
+        } catch (error) {
+            toast.error("Failed to create project")
+        } finally {
             toast.success("Project created successfully")
-            router.push(`/${data.user.username}/${data.id}`)
-            } catch {
-                toast.error("Failed to create project")
-            } finally {
-                setIsLoading(false);
-            }
+        }
     }
 
     return ( 
@@ -63,20 +49,26 @@ const DashboardSidebar = () => {
                             </DialogHeader>
                             <div>
 
-                                <div className="flex flex-col gap-4 mb-8">
+                                <form onSubmit={handleCreateProject}>
+                                    <Label>Project Name</Label>
+                                    <Input name="name" type="text" required placeholder="Project Name" className="w-full"/>
+
+                                    <button type="submit">Create</button>
+
+                                </form>
+
+                                {/* <div className="flex flex-col gap-4 mb-8">
                                     <Label>Project Name</Label>
                                     <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Project Name" className="w-full"/>
-                                </div>
+                                </div> */}
 
-                                <div className="flex flex-col gap-4 mb-8">
+                                {/* <div className="flex flex-col gap-4 mb-8">
                                     <Label>Description (optional)</Label>
                                     <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" className="w-full"/>
-                                </div>
+                                </div> */}
                                 
                             </div>
-                            <DialogFooter>
-                                <Button type="submit" onClick={handleCreate} disabled={isLoading}>Create Project</Button>
-                            </DialogFooter>
+                        
 
                         </DialogContent>
                     </Dialog>
